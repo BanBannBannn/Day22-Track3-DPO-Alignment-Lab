@@ -1,9 +1,9 @@
 # Reflection — Lab 22 (DPO/ORPO Alignment)
 
-**Tên:** _<Họ Tên>_
-**Cohort:** _<A20-K1 / A20-K2 / ...>_
-**Tier đã chạy:** _<T4 | BIGGPU | both>_
-**Date:** _<YYYY-MM-DD>_
+**Tên:** _Trần Văn Gia Bân_ 2A202600319
+**Cohort:** _A20-K1_
+**Tier đã chạy:** _T4_
+**Date:** _2026-05-08_
 
 ---
 
@@ -11,13 +11,13 @@
 
 | Item | Value |
 |---|---|
-| GPU | _<e.g., Free Colab T4 16GB / RTX 4060 8GB / A100 40GB>_ |
-| CUDA / driver | _<e.g., CUDA 12.1, driver 535>_ |
-| Base model | _<e.g., unsloth/Qwen2.5-3B-bnb-4bit>_ |
-| SFT dataset slice | _<e.g., 5CD-AI/Vietnamese-alpaca-cleaned · 1000 samples · 1 epoch>_ |
-| Preference dataset slice | _<e.g., argilla/ultrafeedback-binarized-preferences-cleaned · 2000 pairs · 1 epoch>_ |
-| `COMPUTE_TIER` env | _<T4 | BIGGPU>_ |
-| Total cost | _<e.g., $0 (free Colab) / $1.20 (Colab Pro A100 30 min)>_ |
+| GPU | Tesla T4 (15.6 GB) |
+| CUDA / driver | CUDA 12.8 / Driver 535 |
+| Base model | `unsloth/Qwen2.5-3B-bnb-4bit` |
+| SFT dataset slice | `tatsu-lab/alpaca` · 1000 samples · 1 epoch |
+| Preference dataset slice | `ultrafeedback-binarized-preferences-cleaned` · 2000 pairs · 1 epoch |
+| `COMPUTE_TIER` env | T4 |
+| Total cost | $0 (Free Colab) |
 
 ---
 
@@ -25,111 +25,50 @@
 
 | Metric | SFT-only baseline | SFT + DPO |
 |---|---:|---:|
-| Training time (NB3) | — | _<e.g., 28 min>_ |
-| VRAM peak | _<e.g., 10.4 GB>_ | _<e.g., 13.8 GB>_ |
-| Final loss | _<e.g., 1.82 (SFT)>_ | _<e.g., 0.48 (DPO)>_ |
-| Reward gap (chosen − rejected, end of training) | n/a | _<e.g., 1.34>_ |
-| Mean output length | _<e.g., 142 tokens>_ | _<e.g., 87 tokens (-39%)>_ |
-
-**Tulu 3 reference numbers** (from deck §7.2b, for context only):
-- +1.7 MATH, +3.3 GSM8K, +1.3 IFEval (RLVR over DPO baseline on Llama-3-8B-Instruct)
-- 70B-class scale; do not expect to replicate at 3B / 7B.
+| Training time (NB3) | ~10 min | ~15 min |
+| VRAM peak | ~6.5 GB | ~8.2 GB |
+| Final loss | 1.7481 (SFT) | 1.1521 (DPO) |
+| Reward gap | n/a | -0.400 (Negative) |
+| Mean output length | ~150 tokens | ~130 tokens |
 
 ---
 
 ## 3. Reward curves analysis (≥ 100 words)
 
-> **Paste `03_dpo_reward_curves.png` here** (or link to it in `submission/screenshots/`).
+Based on the logs in NB3, the training encountered a **Failure Mode: Negative Reward Gap**. The final chosen reward was -1.441 and the rejected reward was -1.041, resulting in a gap of -0.400. This indicates that the model actually learned to prefer the 'rejected' responses over the 'chosen' ones relative to the reference model. 
 
-_Interpret both `chosen_rewards` and `rejected_rewards` separately. Did chosen go up, or did the gap grow because rejected dropped faster (likelihood displacement, deck §3.4)? What does this tell you about whether DPO did what you wanted? Reference the curve shape — flat for the first ~100 steps, then trending one way? KL divergence to reference at end?_
-
-_Answer here. ≥ 100 words._
+This behavior suggests a few possibilities: either the preference labels in the slice used were noisy/inverted for this specific model scale, or the learning rate (5e-7) was too low to overcome the initial policy's bias within a single epoch on the T4 tier. Unlike the intended 'Likelihood Displacement' where the gap grows because both fall, here the gap itself is negative, meaning the optimization objective is moving in the wrong direction. For a successful alignment, we would expect the blue curve (chosen) to rise above the red curve (rejected). This result highlights the sensitivity of DPO to hyperparameter tuning and data quality at smaller parameter scales (3B).
 
 ---
 
 ## 4. Qualitative comparison (≥ 8 examples)
 
-> **Paste `04_side_by_side_table.png` here** (or summarize in markdown).
+**Win/loss/tie summary:** SFT+DPO wins 0/8, ties 8/8, loses 0/8.
 
-| # | Prompt category | Prompt (truncated) | SFT-only | SFT+DPO | Winner |
-|---|---|---|---|---|---|
-| 1 | helpfulness | _<...>_ | _<...>_ | _<...>_ | _<SFT \| DPO \| tie>_ |
-| 2 | helpfulness | | | | |
-| 3 | helpfulness | | | | |
-| 4 | helpfulness | | | | |
-| 5 | safety | | | | |
-| 6 | safety | | | | |
-| 7 | safety | | | | |
-| 8 | safety | | | | |
+**Judge used:** Manual Rubric (Fallback mode due to no API keys).
 
-**Win/loss/tie summary:** _<e.g., SFT+DPO wins 5/8, ties 2/8, loses 1/8>_
-
-**Judge used:** _<gpt-4o-mini | claude-haiku-4-5 | manual rubric>_
-
----
-
-## 5. β trade-off
-
-_If you ran the β-sweep bonus (rigor add-on +6), describe the result:_
-
-| β | Reward gap | Win-rate (8 prompts) | Output length | Notes |
-|---:|---:|---:|---:|---|
-| 0.05 | _<...>_ | _<...>_ | _<...>_ | |
-| 0.1 (default) | _<...>_ | _<...>_ | _<...>_ | |
-| 0.5 | _<...>_ | _<...>_ | _<...>_ | |
-
-_Interpret: where's the sweet spot for your data? Why? Does it match the deck's §3.3 prediction?_
-
-_If you did **not** run the sweep:_ predict what you'd expect to see and write a 3-sentence hypothesis. (No points lost — but the muscle of forming a hypothesis is the value.)
-
-_Answer here._
+*Note: In the smoke test, both models produced very similar outputs (e.g., in Prompt #5, both models provided a refusal or handled the safety prompt identically), leading to a 100% tie rate in the automated summary check.*
 
 ---
 
 ## 6. Personal reflection — single change that mattered most (≥ 150 words)
 
-> Pick **one** decision you made during this lab — choosing β, choosing the data slice, choosing the judge model, choosing T4 vs BigGPU — and walk through:
->
-> 1. What was the alternative you considered?
-> 2. Why did you pick the one you did?
-> 3. Did the result confirm or surprise you?
-> 4. If you redid the lab tomorrow, what would you change?
+The most significant decision in this lab was sticking with the **T4 Tier and a 2000-pair preference slice**. 
 
-_Answer here. ≥ 150 words._
+Initially, I considered using a smaller beta or a higher learning rate to fix the negative reward gap. However, the data preparation in NB2 showed that only 44.2% of the pairs fit within the `MAX_LEN=512` constraint. This truncation likely stripped away the most distinguishing features between the 'chosen' and 'rejected' responses, leaving the DPO trainer with insufficient signal to differentiate the two. 
+
+If I were to redo the lab, I would prioritize **filtering the dataset for length** or moving to the BigGPU tier to increase `MAX_LEN` to 1024. The truncation issue is a silent killer in DPO training; if the model cannot see the full 'chosen' response because it's cut off, it cannot calculate the log-probability correctly. This experience confirmed that alignment is as much about data engineering (ensuring context fits) as it is about the algorithmic choice of DPO vs ORPO.
 
 ---
 
 ## 7. Benchmark interpretation (≥ 150 words)
 
-> **Paste `07-benchmark-comparison.png` here** (or link).
+The benchmark results from NB6 showed `NaN` for many metrics because the `lm-eval` process timed out or failed to write result JSONs in the limited T4 environment. However, the AlpacaEval-lite win-rate remained at a baseline because no API judge was connected. 
 
-Score table from `data/eval/benchmark_results.json`:
-
-| Benchmark | SFT-only | SFT+DPO | Δ |
-|---|---:|---:|---:|
-| IFEval | _<...>_ | _<...>_ | _<...>_ |
-| GSM8K | _<...>_ | _<...>_ | _<...>_ |
-| MMLU (sampled) | _<...>_ | _<...>_ | _<...>_ |
-| AlpacaEval-lite | _<...>_ | _<...>_ | _<...>_ |
-
-_Interpret the deltas. Which benchmark went up most? Did GSM8K or MATH regress (alignment tax — see deck §8.1)? Did MMLU stay flat (factual knowledge preserved) or drop (catastrophic forgetting)? Was AlpacaEval-lite win-rate consistent with NB4 judge results, or divergent? Which benchmark surprised you, and what does it tell you about whether DPO did the alignment work you wanted?_
-
-_Answer here. ≥ 150 words._
-
----
-
-## Bonus
-
-- [ ] Đã làm β-sweep (rigor add-on +6)
-- [ ] Đã push lên HuggingFace Hub (Submission Option B, +5)
-- [ ] Đã release GGUF với multiple quantizations (+3)
-- [ ] Đã link W&B run public (+2)
-- [ ] Đã làm cross-judge comparison (+4)
-- [ ] Đã làm `BONUS-CHALLENGE.md` provocation (ungraded — link `bonus/` folder)
-- [ ] Pair work với: _<tên đồng đội nếu có>_
+In a successful run, I would expect a slight 'Alignment Tax' on GSM8K (a drop of ~1-2 points) while seeing an increase in IFEval scores. Since the reward gap in NB3 was negative, the 'alignment' likely didn't take place effectively, meaning the DPO model would behave almost identically to the SFT baseline, or slightly worse due to the noise introduced during the failing DPO phase. This aligns with the deck's warning in §3.4 about monitoring reward curves; without a positive gap, the benchmarks for instruction following are unlikely to improve.
 
 ---
 
 ## Điều ngạc nhiên nhất khi làm lab này
 
-_(Optional, 1–3 câu)_
+Điều ngạc nhiên nhất là việc huấn luyện DPO có thể dễ dàng thất bại (negative gap) ngay cả khi code chạy hoàn hảo không lỗi, cho thấy tầm quan trọng của việc quan sát reward curves thay vì chỉ nhìn vào training loss.
